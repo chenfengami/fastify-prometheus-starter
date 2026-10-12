@@ -1,0 +1,20 @@
+---
+description: fastify-prometheus-starter 的项目结构、指标语义与开发验证约定
+alwaysApply: true
+---
+
+# 项目约定
+
+本项目的共同开发约定维护在根目录 @AGENTS.md。工作前读取并遵循它；如果上下文已包含其内容，不必重复读取。文件引用只指向文件，不会自动把完整内容内联进本规则。
+
+关键约定：
+
+- 保持独立服务模板形态，保留 private: true，当前不发布 npm 库。
+- 使用 pnpm、TypeScript、tsdown 和 Vitest，遵循现有配置和锁文件。
+- 新业务放在 src/modules/<业务>/，分离 schema、metrics、handlers、plugin，在 app.ts 注册。
+- 所有业务共用应用级 Registry，统一 GET /metrics；不用全局 Registry，也不在业务模块中新建 Registry。
+- 严格校验输入，事件映射到固定指标，标签使用有限分类。
+- 指标设计由接入者按业务需求确定；所有指标明确统计对象、单位、更新/去重规则、重启及跨实例聚合条件。Gauge 额外明确归属、快照或增减语义、更新频率和过期处理。
+- Summary 区分窗口分位数与累计 sum/count，不能将各实例分位数求和或平均当作整体分位数。
+
+新增业务时参考 docs/adding-a-business.md。验证命令和按变更范围执行检查的要求以 AGENTS.md 为准。修改本摘要时同步共同约定，避免两份文件描述不一致。
