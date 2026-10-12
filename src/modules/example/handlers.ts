@@ -8,6 +8,7 @@ export function createDownloadHandler(metrics: DownloadMetrics, now = Date.now) 
       case 'completed':
         metrics.completed.inc(labels);
         metrics.duration.observe(labels, event.duration);
+        metrics.durationSummary.observe(labels, event.duration);
         metrics.bytes.inc(labels, event.size);
         return;
       case 'failed':

@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import Fastify from 'fastify';
 import { Counter } from '@prometheus-io/client';
 import { validatorCompiler, serializerCompiler } from 'fastify-type-provider-zod';
@@ -144,4 +144,64 @@ test('separate apps do not share counters or registries', async ({ onTestFinishe
   expect((await first.inject('/metrics')).body).toMatch(/download_completed_total\{source="github"\} 1\n/);
   expect((await second.inject('/metrics')).body).not.toMatch(/source="github"/);
   expect((await first.inject({ method: 'POST', url: '/api/metrics/download', payload: {} })).statusCode).toBe(404);
+});
+
+test('one completed event feeds Histogram and Summary in the example module', async ({ onTestFinished }) => {
+  const app = buildApp();
+  onTestFinished(() => app.close());
+  for (const duration of [1, 2, 3]) {
+    const response = await app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
+      event: 'completed', source: 'github', duration, size: 10,
+    } });
+    expect(response.statusCode, response.body).toBe(200);
+  }
+  await app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
+    event: 'completed', source: 'huggingface', duration: 10, size: 10,
+  } });
+  const scrape = await app.inject('/metrics');
+  expect(scrape.body).toContain('# TYPE download_duration_summary_seconds summary');
+  expect(scrape.body).toContain('# TYPE download_duration_seconds histogram');
+  for (const name of ['download_duration_summary_seconds', 'download_duration_seconds']) {
+    expect(scrape.body).toMatch(new RegExp(`${name}_sum\\{source="github"\\} 6\\n`));
+    expect(scrape.body).toMatch(new RegExp(`${name}_count\\{source="github"\\} 3\\n`));
+  }
+  expect(scrape.body).toMatch(/download_duration_summary_seconds\{quantile="0.5",source="github"\} 2\n/);
+  for (const quantile of ['0.5', '0.95', '0.99']) {
+    expect(scrape.body).toContain(`quantile="${quantile}",source="github"`);
+  }
+  expect(scrape.body).toMatch(/download_duration_summary_seconds_sum\{source="huggingface"\} 10\n/);
+});
+
+test('failed and progress events do not observe durations', async ({ onTestFinished }) => {
+  const app = buildApp();
+  onTestFinished(() => app.close());
+  await app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
+    event: 'failed', source: 'github', reason: 'timeout',
+  } });
+  await app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
+    event: 'progress', source: 'github', speed: 10,
+  } });
+  const scrape = await app.inject('/metrics');
+  expect(scrape.body).not.toContain('download_duration_summary_seconds_count{');
+  expect(scrape.body).not.toContain('download_duration_seconds_count{');
+});
+
+test('rolling quantiles expire while cumulative sum/count retain observations', async ({ onTestFinished }) => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(0);
+  onTestFinished(() => { vi.useRealTimers(); });
+  const registry = createRegistry();
+  const handle = createDownloadHandler(createDownloadMetrics(registry));
+  handle({ event: 'completed', source: 'github', duration: 4, size: 10 });
+  expect(await registry.metrics()).toMatch(/download_duration_summary_seconds\{quantile="0.95",source="github"\} 4\n/);
+  vi.setSystemTime(601_000);
+  const expired = await registry.metrics();
+  expect(expired).toMatch(/download_duration_summary_seconds\{quantile="0.95",source="github"\} 0\n/);
+  expect(expired).toMatch(/download_duration_summary_seconds_sum\{source="github"\} 4\n/);
+  expect(expired).toMatch(/download_duration_summary_seconds_count\{source="github"\} 1\n/);
+  handle({ event: 'completed', source: 'github', duration: 8, size: 10 });
+  const fresh = await registry.metrics();
+  expect(fresh).toMatch(/download_duration_summary_seconds\{quantile="0.95",source="github"\} 8\n/);
+  expect(fresh).toMatch(/download_duration_summary_seconds_sum\{source="github"\} 12\n/);
+  expect(fresh).toMatch(/download_duration_summary_seconds_count\{source="github"\} 2\n/);
 });

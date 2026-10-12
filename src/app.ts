@@ -4,7 +4,11 @@ import { createRegistry } from './core/registry';
 import { examplePlugin } from './modules/example/plugin';
 import { metricsRoute } from './routes/metrics';
 
-export function buildApp({ logger = false }: { logger?: boolean } = {}) {
+interface AppOptions {
+  logger?: boolean;
+}
+
+export function buildApp({ logger = false }: AppOptions = {}) {
   const app = Fastify({ logger, bodyLimit: 16 * 1024 });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);

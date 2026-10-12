@@ -1,4 +1,4 @@
-import { Counter, Gauge, Histogram } from '@prometheus-io/client';
+import { Counter, Gauge, Histogram, Summary } from '@prometheus-io/client';
 import type { Registry } from '@prometheus-io/client';
 
 export function createDownloadMetrics(registry: Registry) {
@@ -22,6 +22,17 @@ export function createDownloadMetrics(registry: Registry) {
     buckets: [0.1, 0.5, 1, 5, 10, 30, 60, 300],
     registers: [registry],
   });
+  // The same observation demonstrates Summary alongside Histogram.
+  const durationSummary = new Summary({
+    name: 'download_duration_summary_seconds',
+    help: 'Accepted completed download durations in seconds; instance-local rolling quantiles, cumulative sum/count.',
+    labelNames: ['source'] as const,
+    percentiles: [0.5, 0.95, 0.99],
+    maxAgeSeconds: 600,
+    ageBuckets: 5,
+    pruneAgedBuckets: false,
+    registers: [registry],
+  });
   const bytes = new Counter({
     name: 'download_completed_bytes_total',
     help: 'Total bytes in accepted completed download events.',
@@ -40,7 +51,7 @@ export function createDownloadMetrics(registry: Registry) {
     labelNames: ['source'] as const,
     registers: [registry],
   });
-  return { completed, failed, duration, bytes, speed, progressUpdatedAt };
+  return { completed, failed, duration, durationSummary, bytes, speed, progressUpdatedAt };
 }
 
 export type DownloadMetrics = ReturnType<typeof createDownloadMetrics>;
