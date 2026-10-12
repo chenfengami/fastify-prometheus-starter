@@ -8,9 +8,9 @@
     "verbatimModuleSyntax": true,
     "esModuleInterop": true,
     "skipLibCheck": false,
-    "rootDir": "src",
+    "rootDir": ".",
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts", "vitest.config.ts", "tsdown.config.ts"]
 }

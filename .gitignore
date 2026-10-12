@@ -3,4 +3,5 @@ dist/
 *.log
 .vitest/
 coverage/
+test/.module-generator-*/
 .DS_Store

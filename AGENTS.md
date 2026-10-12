@@ -17,6 +17,7 @@
 ## 业务模块与 Registry
 
 - 新业务集中放在 `src/modules/<业务>/`，分成 schema.ts、metrics.ts、handlers.ts、plugin.ts，在 src/app.ts 显式注册。
+- 可运行 `pnpm generate:module <名称>` 生成精简模块；生成器拒绝覆盖已有目录，只输出 app.ts 的注册代码。模板位于 scripts/templates/module，修改生成器时验证生成代码的类型和实际路由行为。
 - schema 定义输入协议并推导类型；metrics 定义固定指标；handlers 映射事件；plugin 注册业务路由。业务处理器不负责启动服务器。
 - 每个应用实例创建一个 Registry。模块接收该共享实例，并通过 `registers: [registry]` 注册指标；不使用全局默认 Registry，不在模块内部创建独立 Registry。
 - 一个 Registry 中的指标名称应唯一，并使用业务前缀。普通业务插件默认注册一次，避免重复注册指标。

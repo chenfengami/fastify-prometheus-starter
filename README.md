@@ -65,17 +65,26 @@ src/
     plugin.ts            示例 POST 路由，由 app 提供 prefix
 ```
 
-1. 复制 `src/modules/example`，按自己的业务修改 schema、指标、处理器和插件。
-2. 在 `src/app.ts` 导入并注册新插件，设置路由前缀，传入已有 Registry。
+先生成业务模块：
+
+```sh
+pnpm generate:module order
+```
+
+命令生成 `src/modules/order` 下的 schema、metrics、handlers、plugin 四个文件，提供一个 occurred 事件和 Counter。支持 `file-upload` 这样的名称，已有目录不会被覆盖。
+
+按业务需求修改事件和指标，然后将命令输出的导入及注册代码加入 `src/app.ts`：
 
 ```ts
+import { orderPlugin } from './modules/order/plugin';
+
 app.register(orderPlugin, {
   prefix: '/api/metrics/order',
   registry,
 });
 ```
 
-所有业务的指标自动汇入同一个 `/metrics`。完整步骤见 [新增业务指南](docs/adding-a-business.md)。
+生成器不会自动修改 app.ts。注册后所有业务指标汇入同一个 `/metrics`。完整步骤见 [新增业务指南](docs/adding-a-business.md)。
 
 ## 开发命令
 
@@ -85,6 +94,7 @@ app.register(orderPlugin, {
 | pnpm run typecheck | 检查类型 |
 | pnpm test | 执行测试 |
 | pnpm run test:watch | 监听测试变化 |
+| pnpm generate:module order | 生成业务模块 |
 | pnpm build | 检查类型并构建 |
 | pnpm start | 启动构建后的服务 |
 

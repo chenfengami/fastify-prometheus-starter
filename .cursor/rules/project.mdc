@@ -12,6 +12,7 @@ alwaysApply: true
 - 保持独立服务模板形态，保留 private: true，当前不发布 npm 库。
 - 使用 pnpm、TypeScript、tsdown 和 Vitest，遵循现有配置和锁文件。
 - 新业务放在 src/modules/<业务>/，分离 schema、metrics、handlers、plugin，在 app.ts 注册。
+- 使用 pnpm generate:module <名称> 可生成精简模块；已有目录不覆盖，app.ts 由开发者显式注册。
 - 所有业务共用应用级 Registry，统一 GET /metrics；不用全局 Registry，也不在业务模块中新建 Registry。
 - 严格校验输入，事件映射到固定指标，标签使用有限分类。
 - 指标设计由接入者按业务需求确定；所有指标明确统计对象、单位、更新/去重规则、重启及跨实例聚合条件。Gauge 额外明确归属、快照或增减语义、更新频率和过期处理。

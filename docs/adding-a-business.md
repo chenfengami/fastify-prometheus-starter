@@ -1,16 +1,20 @@
 # 接入一个新业务
 
-本项目的复用单位是 `src/modules/<业务>/`。`modules/example` 是具体的下载示例，复制后改成真实业务；无需修改统一抓取接口。
+本项目的复用单位是 `src/modules/<业务>/`。可用命令生成精简模块，再定义自己的业务；也可参考 modules/example 中的四种指标类型。无需修改统一抓取接口。
 
-## 1. 复制示例模块
+## 1. 生成业务模块
 
 例如增加插件业务：
 
 ```sh
-cp -R src/modules/example src/modules/plugin
+pnpm generate:module plugin
 ```
 
-新模块保留 schema、metrics、handlers、plugin 四份文件。将 `examplePlugin` 改为 `pluginPlugin`，`DownloadEvent`、`createDownloadMetrics`、`createDownloadHandler` 等改为对应业务名。
+命令生成 schema、metrics、handlers、plugin 四份文件，自动使用对应的类型、函数和指标名称。初始协议为 `{"event":"occurred"}`，指标为 plugin_events_total，接收一次合法请求增加 1；没有标签和去重逻辑。
+
+模块名以小写字母开头，只包含小写字母、数字和单个连字符，最长 64 个字符；支持 file-upload，自动生成 FileUpload 类型、fileUploadPlugin 和 file_upload_events_total。目标目录存在时命令报错，不覆盖已有代码。
+
+脚本位于 scripts/generate-module.ts，独立模板位于 scripts/templates/module。它仅创建模块并输出注册代码，不修改 app.ts；`pnpm generate:module --help` 查看用法。下面以修改生成的 plugin 模块为例。
 
 ## 2. 定义请求协议
 
@@ -64,7 +68,7 @@ export function createPluginHandler(metrics: PluginMetrics) {
 }
 ```
 
-指标名需要自己的业务前缀。复制示例后替换 `download_*` 名称，避免同一 Registry 中重复注册。labelNames 必须与处理器传入的 labels 一致，允许的值由服务端维护。
+指标名需要自己的业务前缀，避免同一 Registry 中重复注册。labelNames 必须与处理器传入的 labels 一致，允许的值由服务端维护。
 
 ## 4. 定义 Fastify 插件
 
