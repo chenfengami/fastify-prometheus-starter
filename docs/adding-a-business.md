@@ -113,7 +113,7 @@ app.register(pluginPlugin, {
 });
 ```
 
-POST `/api/metrics/plugin` 接收 started 事件；GET `/metrics` 同时包含下载示例和插件指标，无需手动合并 Registry。每个业务插件默认注册一次；创建第二个应用会获得独立 Registry。
+业务端口（默认 3000）的 POST `/api/metrics/plugin` 接收 started 事件；指标端口（默认 9091）的 GET `/metrics` 同时包含下载示例和插件指标，无需手动合并 Registry。每个业务插件默认注册一次；创建第二个应用会获得独立 Registry。
 
 ## 6. 验证后接入客户端
 
@@ -131,7 +131,7 @@ pnpm build
 curl -i http://127.0.0.1:3000/api/metrics/plugin \
   -H 'Content-Type: application/json' \
   -d '{"event":"started","plugin":"builtin"}'
-curl http://127.0.0.1:3000/metrics
+curl http://127.0.0.1:9091/metrics
 ```
 
 指标类型、名称、单位、标签、上报频率、重试与去重策略由接入者按实际业务确定。示例用于展示接入结构和各类指标的基本用法。

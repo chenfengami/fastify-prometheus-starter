@@ -60,16 +60,17 @@ test('generated plugin typechecks and reports valid events through the shared re
   const { fileUploadPlugin } = await import(join(result.moduleDir, 'plugin.ts'));
   const registry = createRegistry();
   const app = Fastify();
-  onTestFinished(() => app.close());
+  const metricsApp = Fastify();
+  onTestFinished(async () => { await Promise.all([app.close(), metricsApp.close()]); });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
-  app.register(metricsRoute, { registry });
+  metricsApp.register(metricsRoute, { registry });
   app.register(fileUploadPlugin, { prefix: '/api/metrics/file-upload', registry });
   expect((await app.inject({ method: 'POST', url: '/api/metrics/file-upload', payload: { event: 'occurred' } })).statusCode).toBe(200);
   for (const payload of [{ event: 'completed' }, { event: 'occurred', userId: 'unexpected' }]) {
     expect((await app.inject({ method: 'POST', url: '/api/metrics/file-upload', payload })).statusCode).toBe(400);
   }
-  expect((await app.inject('/metrics')).body).toMatch(/file_upload_events_total 1\n/);
+  expect((await metricsApp.inject('/metrics')).body).toMatch(/file_upload_events_total 1\n/);
 });
 
 test('pnpm command generates a module and prints registration without changing app.ts', async ({ onTestFinished }) => {

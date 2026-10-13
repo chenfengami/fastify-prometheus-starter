@@ -10,8 +10,8 @@ import { createDownloadMetrics } from '../src/modules/example/metrics';
 import { createDownloadHandler } from '../src/modules/example/handlers';
 
 test('valid events update only their mapped metrics; snapshots replace rather than accumulate', async ({ onTestFinished }) => {
-  const app = buildApp();
-  onTestFinished(() => app.close());
+  const { app, metricsApp, close } = buildApp();
+  onTestFinished(() => close());
   const events = [
     { event: 'progress', source: 'github', speed: 100 },
     { event: 'progress', source: 'github', speed: 250 },
@@ -24,7 +24,7 @@ test('valid events update only their mapped metrics; snapshots replace rather th
     expect(response.statusCode, response.body).toBe(200);
     expect(response.json()).toEqual({ ok: true });
   }
-  const scrape = await app.inject({ method: 'GET', url: '/metrics' });
+  const scrape = await metricsApp.inject({ method: 'GET', url: '/metrics' });
   expect(scrape.statusCode).toBe(200);
   expect(String(scrape.headers['content-type'])).toMatch(/^text\/plain; version=0\.0\.4/);
   expect(scrape.body).toMatch(/download_completed_total\{source="github"\} 1\n/);
@@ -39,13 +39,13 @@ test('valid events update only their mapped metrics; snapshots replace rather th
   await app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
     event: 'progress', source: 'github', speed: 0,
   } });
-  expect((await app.inject('/metrics')).body).toMatch(/download_speed_bytes_per_second\{source="github"\} 0\n/);
+  expect((await metricsApp.inject('/metrics')).body).toMatch(/download_speed_bytes_per_second\{source="github"\} 0\n/);
 });
 
 test('invalid events return 400 and leave every metric unchanged', async ({ onTestFinished }) => {
-  const app = buildApp();
-  onTestFinished(() => app.close());
-  const before = (await app.inject('/metrics')).body;
+  const { app, metricsApp, close } = buildApp();
+  onTestFinished(() => close());
+  const before = (await metricsApp.inject('/metrics')).body;
   const completed = { event: 'completed', source: 'github', duration: 1, size: 10 };
   const invalid = [
     { event: 'plugin_started', source: 'github' },
@@ -75,7 +75,7 @@ test('invalid events return 400 and leave every metric unchanged', async ({ onTe
       headers: { 'content-type': 'application/json' }, payload });
     expect(response.statusCode).toBe(400);
   }
-  expect((await app.inject('/metrics')).body).toBe(before);
+  expect((await metricsApp.inject('/metrics')).body).toBe(before);
   expect((await app.inject({ method: 'POST', url: '/api/metrics/plugin', payload: {} })).statusCode).toBe(404);
 });
 
@@ -92,10 +92,11 @@ test('timestamp uses server receipt time and registries remain isolated', async 
 test('different business plugins expose their metrics through one registry', async ({ onTestFinished }) => {
   const registry = createRegistry();
   const app = Fastify();
-  onTestFinished(() => app.close());
+  const metricsApp = Fastify();
+  onTestFinished(async () => { await Promise.all([app.close(), metricsApp.close()]); });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
-  app.register(metricsRoute, { registry });
+  metricsApp.register(metricsRoute, { registry });
   app.register(examplePlugin, { registry, prefix: '/api/metrics/example' });
   app.register(async (module) => {
     const started = new Counter({
@@ -112,7 +113,7 @@ test('different business plugins expose their metrics through one registry', asy
     event: 'completed', source: 'github', duration: 1, size: 10,
   } })).statusCode).toBe(200);
   expect((await app.inject({ method: 'POST', url: '/api/metrics/plugin/started' })).statusCode).toBe(200);
-  const scrape = await app.inject('/metrics');
+  const scrape = await metricsApp.inject('/metrics');
   expect(scrape.statusCode).toBe(200);
   expect(scrape.body).toMatch(/download_completed_total\{source="github"\} 1\n/);
   expect(scrape.body).toMatch(/plugin_started_total 1\n/);
@@ -120,7 +121,8 @@ test('different business plugins expose their metrics through one registry', asy
 
 test('example prefix can change and validation follows the plugin scope', async ({ onTestFinished }) => {
   const app = Fastify();
-  onTestFinished(() => app.close());
+  const metricsApp = Fastify();
+  onTestFinished(async () => { await Promise.all([app.close(), metricsApp.close()]); });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.register(examplePlugin, { registry: createRegistry(), prefix: '/custom/download' });
@@ -138,17 +140,17 @@ test('separate apps do not share counters or registries', async ({ onTestFinishe
   onTestFinished(async () => {
     await Promise.all([first.close(), second.close()]);
   });
-  await first.inject({ method: 'POST', url: '/api/metrics/example', payload: {
+  await first.app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
     event: 'completed', source: 'github', duration: 1, size: 10,
   } });
-  expect((await first.inject('/metrics')).body).toMatch(/download_completed_total\{source="github"\} 1\n/);
-  expect((await second.inject('/metrics')).body).not.toMatch(/source="github"/);
-  expect((await first.inject({ method: 'POST', url: '/api/metrics/download', payload: {} })).statusCode).toBe(404);
+  expect((await first.metricsApp.inject('/metrics')).body).toMatch(/download_completed_total\{source="github"\} 1\n/);
+  expect((await second.metricsApp.inject('/metrics')).body).not.toMatch(/source="github"/);
+  expect((await first.app.inject({ method: 'POST', url: '/api/metrics/download', payload: {} })).statusCode).toBe(404);
 });
 
 test('one completed event feeds Histogram and Summary in the example module', async ({ onTestFinished }) => {
-  const app = buildApp();
-  onTestFinished(() => app.close());
+  const { app, metricsApp, close } = buildApp();
+  onTestFinished(() => close());
   for (const duration of [1, 2, 3]) {
     const response = await app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
       event: 'completed', source: 'github', duration, size: 10,
@@ -158,7 +160,7 @@ test('one completed event feeds Histogram and Summary in the example module', as
   await app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
     event: 'completed', source: 'huggingface', duration: 10, size: 10,
   } });
-  const scrape = await app.inject('/metrics');
+  const scrape = await metricsApp.inject('/metrics');
   expect(scrape.body).toContain('# TYPE download_duration_summary_seconds summary');
   expect(scrape.body).toContain('# TYPE download_duration_seconds histogram');
   for (const name of ['download_duration_summary_seconds', 'download_duration_seconds']) {
@@ -173,15 +175,15 @@ test('one completed event feeds Histogram and Summary in the example module', as
 });
 
 test('failed and progress events do not observe durations', async ({ onTestFinished }) => {
-  const app = buildApp();
-  onTestFinished(() => app.close());
+  const { app, metricsApp, close } = buildApp();
+  onTestFinished(() => close());
   await app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
     event: 'failed', source: 'github', reason: 'timeout',
   } });
   await app.inject({ method: 'POST', url: '/api/metrics/example', payload: {
     event: 'progress', source: 'github', speed: 10,
   } });
-  const scrape = await app.inject('/metrics');
+  const scrape = await metricsApp.inject('/metrics');
   expect(scrape.body).not.toContain('download_duration_summary_seconds_count{');
   expect(scrape.body).not.toContain('download_duration_seconds_count{');
 });
@@ -204,4 +206,14 @@ test('rolling quantiles expire while cumulative sum/count retain observations', 
   expect(fresh).toMatch(/download_duration_summary_seconds\{quantile="0.95",source="github"\} 8\n/);
   expect(fresh).toMatch(/download_duration_summary_seconds_sum\{source="github"\} 12\n/);
   expect(fresh).toMatch(/download_duration_summary_seconds_count\{source="github"\} 2\n/);
+});
+
+test('business and metrics servers expose only their own routes', async ({ onTestFinished }) => {
+  const { app, metricsApp, close } = buildApp();
+  onTestFinished(close);
+  expect((await app.inject('/metrics')).statusCode).toBe(404);
+  expect((await metricsApp.inject({ method: 'POST', url: '/api/metrics/example', payload: {
+    event: 'completed', source: 'github', duration: 1, size: 10,
+  } })).statusCode).toBe(404);
+  expect((await metricsApp.inject('/metrics')).statusCode).toBe(200);
 });

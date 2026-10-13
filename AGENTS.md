@@ -19,7 +19,8 @@
 - 新业务集中放在 `src/modules/<业务>/`，分成 schema.ts、metrics.ts、handlers.ts、plugin.ts，在 src/app.ts 显式注册。
 - 可运行 `pnpm generate:module <名称>` 生成精简模块；生成器拒绝覆盖已有目录，只输出 app.ts 的注册代码。模板位于 scripts/templates/module，修改生成器时验证生成代码的类型和实际路由行为。
 - schema 定义输入协议并推导类型；metrics 定义固定指标；handlers 映射事件；plugin 注册业务路由。业务处理器不负责启动服务器。
-- 每个应用实例创建一个 Registry。模块接收该共享实例，并通过 `registers: [registry]` 注册指标；不使用全局默认 Registry，不在模块内部创建独立 Registry。
+- 每次 buildApp 创建业务和指标两个 Fastify 实例，分别监听不同端口；业务实例只注册上报路由，指标实例只注册 GET /metrics，启动失败和退出时关闭两者。
+- 每组业务与指标服务创建一个 Registry。模块接收该共享实例，并通过 `registers: [registry]` 注册指标；不使用全局默认 Registry，不在模块内部创建独立 Registry。
 - 一个 Registry 中的指标名称应唯一，并使用业务前缀。普通业务插件默认注册一次，避免重复注册指标。
 - 业务插件使用相对路由，由 app.register 的 prefix 决定业务入口。保留普通 Fastify 插件的封装与 prefix 行为；在插件内显式使用 ZodTypeProvider。
 - 统一 GET /metrics 只读取应用级 Registry，无需逐业务拼接抓取结果。新增业务也应验证其指标出现在这个接口中。
@@ -44,7 +45,7 @@
 ## 验证与文档
 
 - 修改业务逻辑、接口、依赖或构建配置后，运行 `pnpm run typecheck`、`pnpm test`、`pnpm build`。根据变更补充有意义的测试，不为了覆盖实现细节添加重复测试。
-- 接口测试使用 Fastify inject，每个测试创建独立应用，通过 Vitest 清理钩子等待 app.close。验证非法请求不会修改指标，以及不同业务共享 Registry、不同应用相互隔离。
+- 接口测试使用 Fastify inject，每个测试创建独立应用，通过 Vitest 清理钩子等待两个服务关闭。验证非法请求不会修改指标，以及不同业务共享 Registry、不同应用相互隔离。
 - 仅修改文档或元信息时，检查链接、命令、路径和描述一致性即可，无需机械重跑全套测试。
 - 如检查因环境限制未运行或失败，明确说明实际结果，不将旧版本验证结果当作当前验证结果。
 - 路由、请求字段、指标语义或接入方式改变时，同步 README 和相关 docs，更新 curl 示例。修改共同开发约定时同步 Cursor 规则中的关键摘要。

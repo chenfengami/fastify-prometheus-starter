@@ -22,14 +22,24 @@ pnpm install
 pnpm dev
 ```
 
-默认地址为 `http://127.0.0.1:3000`。编译后运行：
+默认业务上报地址为 `http://127.0.0.1:3000`，指标抓取地址为 `http://127.0.0.1:9091/metrics`。两个服务在同一个进程中运行，共享 Registry。
+
+拆分端口是为了分别控制业务上报和指标抓取的访问范围：业务端口可供客户端访问，指标端口可仅供内网 Prometheus 访问，避免开放业务端口时同时暴露 `/metrics`。端口拆分本身不限制访问，具体监听地址、网络权限和采集配置由部署方设置。
+
+编译后运行：
 
 ```sh
 pnpm build
 pnpm start
 ```
 
-可配置监听地址：`HOST=0.0.0.0 PORT=3000 pnpm start`。部署时需要安装项目的生产依赖。
+可分别配置监听地址和端口：
+
+```sh
+HOST=0.0.0.0 PORT=3000 METRICS_HOST=127.0.0.1 METRICS_PORT=9091 pnpm start
+```
+
+`HOST` 和 `PORT` 控制业务服务，`METRICS_HOST` 和 `METRICS_PORT` 控制指标服务；两个端口必须不同，取值为 1–65535。默认地址均为 `127.0.0.1`。部署时按采集网络配置指标监听地址和访问权限，并安装项目的生产依赖。
 
 ## 发送第一个事件
 
@@ -38,15 +48,15 @@ curl -i http://127.0.0.1:3000/api/metrics/example \
   -H 'Content-Type: application/json' \
   -d '{"event":"completed","source":"huggingface","duration":12.5,"size":104857600}'
 
-curl http://127.0.0.1:3000/metrics
+curl http://127.0.0.1:9091/metrics
 ```
 
 成功返回 `200 {"ok":true}`，随后可从 `/metrics` 查看更新后的指标。
 
-| 接口 | 用途 |
-| --- | --- |
-| POST /api/metrics/example | 接收下载业务示例的事件 |
-| GET /metrics | 返回所有已注册业务的 Prometheus 指标 |
+| 接口 | 默认端口 | 用途 |
+| --- | --- | --- |
+| POST /api/metrics/example | 3000 | 接收下载业务示例的事件 |
+| GET /metrics | 9091 | 返回所有已注册业务的 Prometheus 指标 |
 
 示例支持 completed、failed、progress 三类事件。请求使用 JSON，校验失败返回 400，且不会更新业务指标。完整协议见 [schema.ts](src/modules/example/schema.ts)。
 
@@ -54,7 +64,7 @@ curl http://127.0.0.1:3000/metrics
 
 ```text
 src/
-  app.ts                 创建应用、配置 Zod、组合业务插件
+  app.ts                 创建业务与指标服务、共享 Registry、组合业务插件
   server.ts              监听端口与关闭服务
   core/registry.ts       每个应用创建一个 Registry
   routes/metrics.ts      统一 GET /metrics

@@ -13,8 +13,16 @@ export function buildApp({ logger = false }: AppOptions = {}) {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   const registry = createRegistry();
-  app.register(metricsRoute, { registry });
+  const metricsApp = Fastify({ logger });
+  // Scraping first must still initialize all business metrics.
+  metricsApp.addHook('onReady', async () => { await app.ready(); });
+  metricsApp.register(metricsRoute, { registry });
   app.register(examplePlugin, { prefix: '/api/metrics/example', registry });
   // Register additional business plugins here, using the same registry.
-  return app;
+  async function close() {
+    const results = await Promise.allSettled([app.close(), metricsApp.close()]);
+    const errors = results.flatMap((result) => result.status === 'rejected' ? [result.reason as unknown] : []);
+    if (errors.length > 0) throw new AggregateError(errors, 'Failed to close servers');
+  }
+  return { app, metricsApp, close };
 }
